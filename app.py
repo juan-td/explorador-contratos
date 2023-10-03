@@ -1,7 +1,6 @@
 import json
 import re
 from datetime import datetime
-from numpy import where
 import pandas as pd
 import streamlit as st
 from sodapy import Socrata
@@ -151,14 +150,19 @@ def build_query():
 
     for i in range(st.session_state.num_filters):
         filter_string = ""
+        filter_formatted = filter_list[i]
 
         if data_type_list[i] != "number":
-            value_formatted = "'" + values_list[i] + "'"
+            if operators_list[i] == 'like' and data_type_list[i] == 'text':
+                value_formatted = "'%" + values_list[i].lower() + "%'"
+                filter_formatted = f'lower({filter_formatted})'
+            else:
+                value_formatted = "'" + values_list[i] + "'"
         else:
             value_formatted = values_list[i]
 
         filter_string += (
-            filter_list[i] + " " + operators_list[i] + " " + value_formatted
+            filter_formatted + " " + operators_list[i] + " " + value_formatted
         )
 
         if st.session_state.filter_logic != "Lógica personalizada":
