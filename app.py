@@ -1,4 +1,7 @@
 import json
+import re
+from datetime import datetime
+from numpy import where
 import pandas as pd
 import streamlit as st
 from sodapy import Socrata
@@ -14,8 +17,8 @@ Agrega los filtros que desees y haz clic en **obtener datos**
 )
 
 # Set up filters
-with open("data/filter_options.json", "r") as f:
-    filter_options = json.load(f)
+with open("data/metadata.json", "r") as f:
+    metadata = json.load(f)
 
 # Initialize the session state
 if "num_filters" not in st.session_state:
@@ -29,7 +32,7 @@ for i in range(st.session_state.num_filters):
     with filter_col1:
         st.selectbox(
             label=f"Filtro {i+1}",
-            options=filter_options["columns"].keys(),
+            options=[column["name"] for column in metadata["columns"]],
             key=f"filter_{i+1}",
             index=None,
             placeholder="Selecciona una columna",
@@ -37,7 +40,7 @@ for i in range(st.session_state.num_filters):
     with filter_col2:
         st.selectbox(
             label="Operador",
-            options=filter_options["operators"].keys(),
+            options=metadata["operators"].keys(),
             key=f"operator_filter_{i+1}",
             label_visibility="hidden",
         )
@@ -75,35 +78,125 @@ if remove_filter:
     st.rerun()
 
 # Add filter logic input
-filter_logic_radio = st.radio(
+if "filter_logic" not in st.session_state:
+    st.session_state.filter_logic = "Todos cumplen (AND)"
+
+if "logic_string" not in st.session_state:
+    st.session_state.logic_string = ""
+
+
+def change_filter_logic():
+    st.session_state.filter_logic = st.session_state.radio_filter_logic
+
+
+st.radio(
     label="Escoge la lógica entre tus filtros:",
     options=["Todos cumplen (AND)", "Cualquiera cumple (OR)", "Lógica personalizada"],
     horizontal=True,
+    key="radio_filter_logic",
+    on_change=change_filter_logic,
+    index=0,
 )
-if filter_logic_radio == "Lógica personalizada":
+
+
+if st.session_state.filter_logic == "Lógica personalizada":
     st.markdown(
         """
     <small> Define la lógica entre tus filtros utilizando las palabras AND, OR, NOT, y paréntesis.
     Haz refencia a cada filtro con su numeración
-
+    
     Ejemplo: *1 AND 2 OR (3 AND NOT 4)*</small>""",
         unsafe_allow_html=True,
     )
-    logic_string = st.text_input(
-        label="Lógica personalizada", label_visibility="collapsed"
+    st.session_state.logic_string = st.text_input(
+        label="Lógica personalizada",
+        label_visibility="collapsed",
+        key="logic_string_input",
     )
 
 
-# # set up socrata client
-# client = Socrata("www.datos.gov.co", None)
+def build_query():
+    # Set up filter string
+    if st.session_state.filter_logic == "Lógica personalizada":
+        where_clause = st.session_state.logic_string.upper()
+        for i in range(st.session_state.num_filters):
+            where_clause = where_clause.replace(str(i + 1), f"[FILTER_{i+1}]")
+    else:
+        where_clause = ""
 
-# results = client.get(
-#     "jbjy-vk9h",
-#     where="nit_entidad=899999114 and lower(proveedor_adjudicado) like '%claudia andrea%'",
-#     limit=1000,
-#     content_type="json",
-# )
-# results_df = pd.DataFrame.from_records(
-#     results,
-# )
-# results_df
+    filter_list = [
+        [
+            column["fieldName"]
+            for column in metadata["columns"]
+            if column["name"] == st.session_state[f"filter_{x+1}"]
+        ][0]
+        for x in range(st.session_state.num_filters)
+    ]
+    data_type_list = [
+        [
+            column["dataTypeName"]
+            for column in metadata["columns"]
+            if column["name"] == st.session_state[f"filter_{x+1}"]
+        ][0]
+        for x in range(st.session_state.num_filters)
+    ]  # calendar_date, number, text, url
+    operators_list = [
+        metadata["operators"][st.session_state[f"operator_filter_{x+1}"]]
+        for x in range(st.session_state.num_filters)
+    ]
+    values_list = [
+        st.session_state[f"value_filter_{x+1}"]
+        for x in range(st.session_state.num_filters)
+    ]
+
+    for i in range(st.session_state.num_filters):
+        filter_string = ""
+
+        if data_type_list[i] != "number":
+            value_formatted = "'" + values_list[i] + "'"
+        else:
+            value_formatted = values_list[i]
+
+        filter_string += (
+            filter_list[i] + " " + operators_list[i] + " " + value_formatted
+        )
+
+        if st.session_state.filter_logic != "Lógica personalizada":
+            if i < st.session_state.num_filters - 1:
+                if st.session_state.filter_logic == "Todos cumplen (AND)":
+                    filter_string += " AND "
+                elif st.session_state.filter_logic == "Cualquiera cumple (OR)":
+                    filter_string += " OR "
+            where_clause += filter_string
+        else:
+            where_clause = where_clause.replace(f"[FILTER_{i+1}]", filter_string)
+
+    return where_clause
+
+
+if "contract_dataframe" not in st.session_state:
+    st.session_state.contract_dataframe = None
+
+
+def get_data():
+    where_clause = build_query()
+
+    # set up socrata client
+    client = Socrata("www.datos.gov.co", None)
+
+    results = client.get(
+        "jbjy-vk9h",
+        where=where_clause,
+        limit=1000,
+        content_type="json",
+    )
+    results_df = pd.DataFrame.from_records(
+        results,
+    )
+    st.session_state.contract_dataframe = results_df
+
+
+st.button("Obtener datos", on_click=get_data, key="get_data_button")
+
+if st.session_state.get_data_button:
+    st.dataframe(st.session_state.contract_dataframe)
