@@ -192,7 +192,7 @@ def get_data():
         "jbjy-vk9h",
         where=where_clause,
         limit=1000,
-        content_type="json",
+        content_type="json"
     )
     results_df = pd.DataFrame.from_records(
         results,
