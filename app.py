@@ -230,6 +230,7 @@ def build_query():
 if "contract_dataframe" not in st.session_state:
     st.session_state.contract_dataframe = None
 
+
 def get_data():
     where_clause = build_query()
 
@@ -243,6 +244,7 @@ def get_data():
         results,
     )
     st.session_state.contract_dataframe = results_df
+
 
 st.divider()
 
