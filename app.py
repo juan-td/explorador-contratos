@@ -11,6 +11,7 @@ st.title(
 Explorador de Contratos SECOP
 Distintas visualizaciones y análisis de los contratos públicos publicados en SECOP II
 
+---
 Agrega los filtros que desees y haz clic en **obtener datos**  
 """
 )
@@ -18,6 +19,19 @@ Agrega los filtros que desees y haz clic en **obtener datos**
 # Set up filters
 with open("data/metadata.json", "r") as f:
     metadata = json.load(f)
+
+metadata_column_fieldname_dict = {}
+
+for column in metadata["columns"]:
+    # Extract the "fieldName" and "name" values
+    fieldName = column["fieldName"]
+    name = column["name"]
+
+    # Add them to the result_dict
+    metadata_column_fieldname_dict[name] = fieldName
+
+with open("data/unique_values.json", "r") as f:
+    unique_values = json.load(f)
 
 # Initialize the session state
 if "num_filters" not in st.session_state:
@@ -37,19 +51,54 @@ for i in range(st.session_state.num_filters):
             placeholder="Selecciona una columna",
         )
     with filter_col2:
-        st.selectbox(
-            label="Operador",
-            options=metadata["operators"].keys(),
-            key=f"operator_filter_{i+1}",
-            label_visibility="hidden",
-        )
+        if (
+            st.session_state[f"filter_{i+1}"] != None
+            and metadata_column_fieldname_dict[st.session_state[f"filter_{i+1}"]]
+            in unique_values.keys()
+        ):
+            st.selectbox(
+                label="Operador",
+                options=[
+                    o
+                    for o in metadata["operators"].keys()
+                    if metadata["operators"][o] not in ("<", ">", "<=", ">=")
+                ],
+                key=f"operator_filter_{i+1}",
+                label_visibility="hidden",
+            )
+        else:
+            st.selectbox(
+                label="Operador",
+                options=metadata["operators"].keys(),
+                key=f"operator_filter_{i+1}",
+                label_visibility="hidden",
+            )
     with filter_col3:
-        st.text_input(
-            label="Selecciona un valor",
-            label_visibility="hidden",
-            placeholder="Valor",
-            key=f"value_filter_{i+1}",
-        )
+        if (
+            st.session_state[f"filter_{i+1}"] != None
+            and metadata_column_fieldname_dict[st.session_state[f"filter_{i+1}"]]
+            in unique_values.keys()
+            and metadata["operators"][st.session_state[f"operator_filter_{i+1}"]]
+            in [
+                "=",
+                "<>",
+            ]
+        ):
+            st.selectbox(
+                label="Selecciona un valor",
+                options=unique_values[
+                    metadata_column_fieldname_dict[st.session_state[f"filter_{i+1}"]]
+                ],
+                key=f"value_filter_{i+1}",
+                label_visibility="hidden",
+            )
+        else:
+            st.text_input(
+                label="Selecciona un valor",
+                label_visibility="hidden",
+                placeholder="Valor",
+                key=f"value_filter_{i+1}",
+            )
 
 # Create placeholders for the buttons
 button_col1, button_col2 = st.columns([0.207, 1])
@@ -153,9 +202,9 @@ def build_query():
         filter_formatted = filter_list[i]
 
         if data_type_list[i] != "number":
-            if operators_list[i] == 'like' and data_type_list[i] == 'text':
+            if operators_list[i] == "like" and data_type_list[i] == "text":
                 value_formatted = "'%" + values_list[i].lower() + "%'"
-                filter_formatted = f'lower({filter_formatted})'
+                filter_formatted = f"lower({filter_formatted})"
             else:
                 value_formatted = "'" + values_list[i] + "'"
         else:
@@ -181,7 +230,6 @@ def build_query():
 if "contract_dataframe" not in st.session_state:
     st.session_state.contract_dataframe = None
 
-
 def get_data():
     where_clause = build_query()
 
@@ -189,16 +237,14 @@ def get_data():
     client = Socrata("www.datos.gov.co", None)
 
     results = client.get(
-        "jbjy-vk9h",
-        where=where_clause,
-        limit=1000,
-        content_type="json"
+        "jbjy-vk9h", where=where_clause, limit=1000, content_type="json"
     )
     results_df = pd.DataFrame.from_records(
         results,
     )
     st.session_state.contract_dataframe = results_df
 
+st.divider()
 
 st.button("Obtener datos", on_click=get_data, key="get_data_button")
 
