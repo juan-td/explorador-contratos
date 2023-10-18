@@ -16,24 +16,22 @@ Agrega los filtros que desees y haz clic en **obtener datos**
 """
 )
 
-# Set up filters
+# Load dataset metadata and build fieldname dict
 with open("data/metadata.json", "r") as f:
     metadata = json.load(f)
 
 metadata_column_fieldname_dict = {}
 
 for column in metadata["columns"]:
-    # Extract the "fieldName" and "name" values
     fieldName = column["fieldName"]
     name = column["name"]
-
-    # Add them to the result_dict
     metadata_column_fieldname_dict[name] = fieldName
 
+# Load unique values for specific columns
 with open("data/unique_values.json", "r") as f:
     unique_values = json.load(f)
 
-# Initialize the session state
+# Set up session state for multiple filters
 if "num_filters" not in st.session_state:
     st.session_state.num_filters = 1
 
@@ -100,7 +98,7 @@ for i in range(st.session_state.num_filters):
                 key=f"value_filter_{i+1}",
             )
 
-# Create placeholders for the buttons
+# Create columns for the buttons
 button_col1, button_col2 = st.columns([0.207, 1])
 
 # Add the 'Add Filter' button in the first column
@@ -164,6 +162,9 @@ if st.session_state.filter_logic == "Lógica personalizada":
 
 
 def build_query():
+    """
+    Build the query to be sent to the database from filters chosen
+    """
     # Set up filter string
     if st.session_state.filter_logic == "Lógica personalizada":
         where_clause = st.session_state.logic_string.upper()
@@ -232,6 +233,9 @@ if "contract_dataframe" not in st.session_state:
 
 
 def get_data():
+    """
+    Get data from datos.gov.co based on filters chosen
+    """
     where_clause = build_query()
 
     # set up socrata client
@@ -252,3 +256,4 @@ st.button("Obtener datos", on_click=get_data, key="get_data_button")
 
 if st.session_state.get_data_button:
     st.dataframe(st.session_state.contract_dataframe)
+
